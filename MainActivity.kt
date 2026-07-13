@@ -24,6 +24,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
+// Make sure to add this import at the top of MainActivity.kt
+import androidx.compose.ui.platform.LocalContext
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,20 +45,44 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AndroidVibeApp() {
-    var apiKey by remember { mutableStateOf("") }
-    var isKeySaved by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Initialize our SettingsManager
+    val settingsManager = remember { SettingsManager(context) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Collect the saved API key from the DataStore flow
+    // initialValue is null while it loads, so we don't flash the login screen unnecessarily
+    val savedApiKey by settingsManager.apiKeyFlow.collectAsState(initial = null)
 
-    if (!isKeySaved) {
+    // Wait until the DataStore finishes its first read
+    if (savedApiKey == null) {
+        // Show a loading spinner or empty screen while checking storage
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else if (savedApiKey!!.isBlank()) {
+        // No key found, show the login screen
         ApiKeyScreen(
             onKeySubmitted = { key ->
-                apiKey = key
-                isKeySaved = true
+                coroutineScope.launch {
+                    settingsManager.saveApiKey(key)
+                }
             }
         )
     } else {
-        VibeWorkspaceScreen(apiKey = apiKey)
+        // Key found, go straight to the workspace
+        VibeWorkspaceScreen(
+            apiKey = savedApiKey!!,
+            onClearKey = {
+                // Allow the user to remove their key
+                coroutineScope.launch {
+                    settingsManager.clearApiKey()
+                }
+            }
+        )
     }
 }
+
 
 @Composable
 fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
