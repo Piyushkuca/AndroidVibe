@@ -18,7 +18,7 @@
 
 ## 🛠️ Tech Stack
 
-* **Framework:** Flutter (Dart)
+* **Framework:** Kotlin
 * **Platform:** Android
 * **AI Integration:** REST/WebSocket APIs for LLM communication
 
