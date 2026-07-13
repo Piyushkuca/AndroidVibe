@@ -255,31 +255,45 @@ fun VibeWorkspaceScreen(apiKey: String) {
 }
 
 @Composable
-// Data models for parsed text
-sealed class MessageSegment {
-    data class Text(val content: String) : MessageSegment()
-    data class Code(val language: String, val content: String) : MessageSegment()
-}
-
-// Helper function to split markdown into text and code segments
-fun parseMessage(message: String): List<MessageSegment> {
-    val segments = mutableListOf<MessageSegment>()
-    // Split the message by triple backticks
-    val parts = message.split("```")
-    
-    for ((index, part) in parts.withIndex()) {
-        if (index % 2 == 1) { 
-            // Odd index means it is inside a code block
-            val lines = part.lines()
-            val language = lines.firstOrNull()?.trim() ?: ""
-            val code = lines.drop(1).joinToString("\n").trim()
-            segments.add(MessageSegment.Code(language, code))
-        } else {
-            // Even index means it is regular text
-            if (part.isNotBlank()) {
-                segments.add(MessageSegment.Text(part.trim()))
+fun ChatBubble(text: String, isUser: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Surface(
+            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            if (isUser) {
+                // Simple rendering for user prompts
+                Text(
+                    text = text,
+                    modifier = Modifier.padding(12.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                // Advanced parsing for AI responses
+                Column(modifier = Modifier.padding(12.dp)) {
+                    val segments = parseMessage(text)
+                    segments.forEach { segment ->
+                        when (segment) {
+                            is MessageSegment.Text -> {
+                                Text(
+                                    text = segment.content,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
+                            is MessageSegment.Code -> {
+                                CodeBlockView(code = segment.content, language = segment.language)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-    return segments
 }
