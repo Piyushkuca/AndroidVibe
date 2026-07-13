@@ -139,10 +139,7 @@ fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
             enabled = keyInput.isNotBlank()
         ) {
             Text("Start Building")
-        }
-    }
-}
-
+            
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibeWorkspaceScreen(apiKey: String) {
@@ -150,13 +147,47 @@ fun VibeWorkspaceScreen(apiKey: String) {
     var messages by remember { mutableStateOf(listOf<Message>()) }
     var isLoading by remember { mutableStateOf(false) }
     
-    // Coroutine scope for network calls
+    // State for the Model Dropdown
+    var expanded by remember { mutableStateOf(false) }
+    var selectedModel by remember { mutableStateOf(Constants.SUPPORTED_MODELS.first()) }
+    
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Vibe Workspace (NVIDIA)") },
+                title = { 
+                    Column {
+                        Text("Vibe Workspace", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = "Model: ${selectedModel.split("/").last()}", 
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { expanded = true }) {
+                            // Using a simple text button for the dropdown trigger if you don't have the MoreVert icon
+                            Text("⚙️", style = MaterialTheme.typography.titleLarge)
+                        }
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            Constants.SUPPORTED_MODELS.forEach { model ->
+                                DropdownMenuItem(
+                                    text = { Text(model.split("/").last()) },
+                                    onClick = {
+                                        selectedModel = model
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -190,12 +221,12 @@ fun VibeWorkspaceScreen(apiKey: String) {
                             
                             coroutineScope.launch {
                                 try {
-                                    // Send the system prompt + user history to NVIDIA
                                     val fullContext = listOf(
                                         Message(role = "system", content = "You are an expert Android Jetpack Compose developer. Only output valid Kotlin code without markdown wrapping.")
                                     ) + messages
                                     
-                                    val request = ChatRequest(messages = fullContext)
+                                    // Pass the selected model to the API request
+                                    val request = ChatRequest(model = selectedModel, messages = fullContext)
                                     val response = nvidiaApi.generateCode("Bearer $apiKey", request)
                                     
                                     if (response.isSuccessful) {
@@ -253,15 +284,14 @@ fun VibeWorkspaceScreen(apiKey: String) {
         }
     }
 }
-
-@Composable
+Composable
 
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 
-@Composable
+Composable
 fun CodeBlockView(code: String, language: String) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
