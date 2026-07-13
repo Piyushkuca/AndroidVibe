@@ -18,14 +18,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-
-// Make sure to add this import at the top of MainActivity.kt
-import androidx.compose.ui.platform.LocalContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,25 +41,95 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun AndroidVibeApp() {
+    val context = LocalContext.current
+    val settingsManager = remember { SettingsManager(context) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Collect the saved API key. It is null initially while loading.
+    val savedApiKey by settingsManager.apiKeyFlow.collectAsState(initial = null)
+
+    if (savedApiKey == null) {
+        // Loading state while checking DataStore
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else if (savedApiKey!!.isBlank()) {
+        // No key saved, show the login screen
+        ApiKeyScreen(
+            onKeySubmitted = { key ->
+                coroutineScope.launch {
+                    settingsManager.saveApiKey(key)
+                }
+            }
+        )
+    } else {
+        // Key is saved, go directly to the workspace
+        VibeWorkspaceScreen(
+            apiKey = savedApiKey!!,
+            onClearKey = {
+                coroutineScope.launch {
+                    settingsManager.clearApiKey()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
+    var keyInput by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Welcome to AndroidVibe",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Text(
+            text = "Enter your NVIDIA API Key to start coding.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+        
+        OutlinedTextField(
+            value = keyInput,
+            onValueChange = { keyInput = it },
+            label = { Text("nvapi-...") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = { if (keyInput.isNotBlank()) onKeySubmitted(keyInput) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = keyInput.isNotBlank()
+        ) {
+            Text("Start Building")
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VibeWorkspaceScreen(apiKey: String, onClearKey: () -> Unit) { 
-    // ... rest of your variables ...
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun VibeWorkspaceScreen(apiKey: String, onClearKey: () -> Unit) { 
-    // ... rest of your variables ...
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun VibeWorkspaceScreen(apiKey: String) {
+fun VibeWorkspaceScreen(apiKey: String, onClearKey: () -> Unit) {
     var prompt by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf<Message>()) }
     var isLoading by remember { mutableStateOf(false) }
     
     // Model Dropdown State
     var expanded by remember { mutableStateOf(false) }
-    // Ensure Constants.kt exists with SUPPORTED_MODELS as defined earlier!
     var selectedModel by remember { mutableStateOf(Constants.SUPPORTED_MODELS.first()) }
     
     val coroutineScope = rememberCoroutineScope()
@@ -97,6 +165,16 @@ fun VibeWorkspaceScreen(apiKey: String) {
                                     }
                                 )
                             }
+                            
+                            HorizontalDivider() // Separator for the clear button
+                            
+                            DropdownMenuItem(
+                                text = { Text("Clear API Key", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    expanded = false
+                                    onClearKey()
+                                }
+                            )
                         }
                     }
                 },
@@ -127,7 +205,6 @@ fun VibeWorkspaceScreen(apiKey: String) {
                         if (prompt.isNotBlank()) {
                             val userMessage = Message(role = "user", content = prompt)
                             messages = messages + userMessage
-                            val currentPrompt = prompt
                             prompt = ""
                             isLoading = true
                             
