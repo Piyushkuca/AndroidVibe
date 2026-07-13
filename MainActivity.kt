@@ -43,90 +43,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AndroidVibeApp() {
-    val context = LocalContext.current
-    // Initialize our SettingsManager
-    val settingsManager = remember { SettingsManager(context) }
-    val coroutineScope = rememberCoroutineScope()
-    
-    // Collect the saved API key from the DataStore flow
-    // initialValue is null while it loads, so we don't flash the login screen unnecessarily
-    val savedApiKey by settingsManager.apiKeyFlow.collectAsState(initial = null)
-
-    // Wait until the DataStore finishes its first read
-    if (savedApiKey == null) {
-        // Show a loading spinner or empty screen while checking storage
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-    } else if (savedApiKey!!.isBlank()) {
-        // No key found, show the login screen
-        ApiKeyScreen(
-            onKeySubmitted = { key ->
-                coroutineScope.launch {
-                    settingsManager.saveApiKey(key)
-                }
-            }
-        )
-    } else {
-        // Key found, go straight to the workspace
-        VibeWorkspaceScreen(
-            apiKey = savedApiKey!!,
-            onClearKey = {
-                // Allow the user to remove their key
-                coroutineScope.launch {
-                    settingsManager.clearApiKey()
-                }
-            }
-        )
-    }
-}
-
-
-@Composable
-fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
-    var keyInput by remember { mutableStateOf("") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Welcome to AndroidVibe",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        Text(
-            text = "Enter your NVIDIA API Key to start coding.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
-        
-        OutlinedTextField(
-            value = keyInput,
-            onValueChange = { keyInput = it },
-            label = { Text("nvapi-...") },
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = { if (keyInput.isNotBlank()) onKeySubmitted(keyInput) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = keyInput.isNotBlank()
-        ) {
-            Text("Start Building")
-        }
-    }
-}
+fun VibeWorkspaceScreen(apiKey: String, onClearKey: () -> Unit) { 
+    // ... rest of your variables ...
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibeWorkspaceScreen(apiKey: String, onClearKey: () -> Unit) { 
