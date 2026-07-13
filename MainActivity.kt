@@ -4,9 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
@@ -15,56 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Body
-import retrofit2.http.Header
-import retrofit2.http.POST
-import retrofit2.Response
-
-// --- NETWORK MODELS & API INTERFACE ---
-
-data class ChatRequest(
-    val model: String = "meta/llama-3.1-405b-instruct", // High-tier NVIDIA NIM model
-    val messages: List<Message>,
-    val max_tokens: Int = 1024,
-    val temperature: Double = 0.2
-)
-
-data class Message(
-    val role: String,
-    val content: String
-)
-
-data class ChatResponse(
-    val choices: List<Choice>?
-)
-
-data class Choice(
-    val message: Message
-)
-
-interface NvidiaApiService {
-    @POST("v1/chat/completions")
-    suspend fun generateCode(
-        @Header("Authorization") authHeader: String,
-        @Body request: ChatRequest
-    ): Response<ChatResponse>
-}
-
-// Retrofit singleton setup
-val retrofit = Retrofit.Builder()
-    .baseUrl("https://integrate.api.nvidia.com/")
-    .addConverterFactory(GsonConverterFactory.create())
-    .build()
-
-val nvidiaApi = retrofit.create(NvidiaApiService::class.java)
-
-// --- MAIN ACTIVITY ---
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,7 +97,10 @@ fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
             enabled = keyInput.isNotBlank()
         ) {
             Text("Start Building")
-            
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibeWorkspaceScreen(apiKey: String) {
@@ -147,8 +108,9 @@ fun VibeWorkspaceScreen(apiKey: String) {
     var messages by remember { mutableStateOf(listOf<Message>()) }
     var isLoading by remember { mutableStateOf(false) }
     
-    // State for the Model Dropdown
+    // Model Dropdown State
     var expanded by remember { mutableStateOf(false) }
+    // Ensure Constants.kt exists with SUPPORTED_MODELS as defined earlier!
     var selectedModel by remember { mutableStateOf(Constants.SUPPORTED_MODELS.first()) }
     
     val coroutineScope = rememberCoroutineScope()
@@ -169,7 +131,6 @@ fun VibeWorkspaceScreen(apiKey: String) {
                 actions = {
                     Box {
                         IconButton(onClick = { expanded = true }) {
-                            // Using a simple text button for the dropdown trigger if you don't have the MoreVert icon
                             Text("⚙️", style = MaterialTheme.typography.titleLarge)
                         }
                         DropdownMenu(
@@ -225,7 +186,6 @@ fun VibeWorkspaceScreen(apiKey: String) {
                                         Message(role = "system", content = "You are an expert Android Jetpack Compose developer. Only output valid Kotlin code without markdown wrapping.")
                                     ) + messages
                                     
-                                    // Pass the selected model to the API request
                                     val request = ChatRequest(model = selectedModel, messages = fullContext)
                                     val response = nvidiaApi.generateCode("Bearer $apiKey", request)
                                     
@@ -233,7 +193,7 @@ fun VibeWorkspaceScreen(apiKey: String) {
                                         val aiResponse = response.body()?.choices?.firstOrNull()?.message?.content ?: "Error: No response generated."
                                         messages = messages + Message(role = "assistant", content = aiResponse)
                                     } else {
-                                        messages = messages + Message(role = "assistant", content = "Error: ${response.code()} - ${response.message()}")
+                                        messages = messages + Message(role = "assistant", content = "Error: ${response.code()} -${response.message()}")
                                     }
                                 } catch (e: Exception) {
                                     messages = messages + Message(role = "assistant", content = "Network Error: ${e.localizedMessage}")
@@ -284,14 +244,50 @@ fun VibeWorkspaceScreen(apiKey: String) {
         }
     }
 }
-Composable
 
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
+@Composable
+fun ChatBubble(text: String, isUser: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Surface(
+            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            if (isUser) {
+                Text(
+                    text = text,
+                    modifier = Modifier.padding(12.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    val segments = parseMessage(text)
+                    segments.forEach { segment ->
+                        when (segment) {
+                            is MessageSegment.Text -> {
+                                Text(
+                                    text = segment.content,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
+                            is MessageSegment.Code -> {
+                                CodeBlockView(code = segment.content, language = segment.language)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
-Composable
+@Composable
 fun CodeBlockView(code: String, language: String) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
@@ -302,7 +298,6 @@ fun CodeBlockView(code: String, language: String) {
             .padding(vertical = 8.dp)
             .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
     ) {
-        // Top bar of the code block
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -333,10 +328,9 @@ fun CodeBlockView(code: String, language: String) {
             }
         }
         
-        // Scrollable code area
         Text(
             text = code,
-            color = Color(0xFFD4D4D4), // Classic VSCode light gray
+            color = Color(0xFFD4D4D4),
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier
@@ -344,4 +338,30 @@ fun CodeBlockView(code: String, language: String) {
                 .padding(12.dp)
         )
     }
+}
+
+// --- MARKDOWN PARSER UTILS ---
+
+sealed class MessageSegment {
+    data class Text(val content: String) : MessageSegment()
+    data class Code(val language: String, val content: String) : MessageSegment()
+}
+
+fun parseMessage(message: String): List<MessageSegment> {
+    val segments = mutableListOf<MessageSegment>()
+    val parts = message.split("```")
+    
+    for ((index, part) in parts.withIndex()) {
+        if (index % 2 == 1) { 
+            val lines = part.lines()
+            val language = lines.firstOrNull()?.trim() ?: ""
+            val code = lines.drop(1).joinToString("\n").trim()
+            segments.add(MessageSegment.Code(language, code))
+        } else {
+            if (part.isNotBlank()) {
+                segments.add(MessageSegment.Text(part.trim()))
+            }
+        }
+    }
+    return segments
 }
