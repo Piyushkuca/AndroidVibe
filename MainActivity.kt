@@ -18,6 +18,53 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
+import retrofit2.http.Header
+import retrofit2.http.POST
+import retrofit2.Response
+
+// --- NETWORK MODELS & API INTERFACE ---
+
+data class ChatRequest(
+    val model: String = "meta/llama-3.1-405b-instruct", // High-tier NVIDIA NIM model
+    val messages: List<Message>,
+    val max_tokens: Int = 1024,
+    val temperature: Double = 0.2
+)
+
+data class Message(
+    val role: String,
+    val content: String
+)
+
+data class ChatResponse(
+    val choices: List<Choice>?
+)
+
+data class Choice(
+    val message: Message
+)
+
+interface NvidiaApiService {
+    @POST("v1/chat/completions")
+    suspend fun generateCode(
+        @Header("Authorization") authHeader: String,
+        @Body request: ChatRequest
+    ): Response<ChatResponse>
+}
+
+// Retrofit singleton setup
+val retrofit = Retrofit.Builder()
+    .baseUrl("https://integrate.api.nvidia.com/")
+    .addConverterFactory(GsonConverterFactory.create())
+    .build()
+
+val nvidiaApi = retrofit.create(NvidiaApiService::class.java)
+
+// --- MAIN ACTIVITY ---
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,7 +84,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AndroidVibeApp() {
-    // State to hold the API key. In a production app, save this to DataStore/SharedPreferences.
     var apiKey by remember { mutableStateOf("") }
     var isKeySaved by remember { mutableStateOf(false) }
 
@@ -70,7 +116,7 @@ fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
             modifier = Modifier.padding(bottom = 8.dp)
         )
         Text(
-            text = "Enter your AI API Key to start vibe coding.",
+            text = "Enter your NVIDIA API Key to start coding.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 24.dp)
@@ -79,7 +125,7 @@ fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
         OutlinedTextField(
             value = keyInput,
             onValueChange = { keyInput = it },
-            label = { Text("API Key") },
+            label = { Text("nvapi-...") },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
@@ -101,13 +147,16 @@ fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
 @Composable
 fun VibeWorkspaceScreen(apiKey: String) {
     var prompt by remember { mutableStateOf("") }
-    // A simple list to hold the conversation history
-    var messages by remember { mutableStateOf(listOf<Pair<String, Boolean>>()) }
+    var messages by remember { mutableStateOf(listOf<Message>()) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    // Coroutine scope for network calls
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Vibe Workspace") },
+                title = { Text("Vibe Workspace (NVIDIA)") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -124,26 +173,50 @@ fun VibeWorkspaceScreen(apiKey: String) {
                 OutlinedTextField(
                     value = prompt,
                     onValueChange = { prompt = it },
-                    placeholder = { Text("Describe what you want to build...") },
+                    placeholder = { Text("Build a login screen...") },
                     modifier = Modifier.weight(1f),
-                    maxLines = 3
+                    maxLines = 3,
+                    enabled = !isLoading
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
                     onClick = {
                         if (prompt.isNotBlank()) {
-                            // Add user prompt to list
-                            messages = messages + Pair(prompt, true)
-                            // TODO: Trigger network call to AI here using the apiKey
-                            // Mocking an AI response for now
-                            messages = messages + Pair("// Generating code for: $prompt\n\nfun myGeneratedCode() {\n    // Magic happens here\n}", false)
+                            val userMessage = Message(role = "user", content = prompt)
+                            messages = messages + userMessage
+                            val currentPrompt = prompt
                             prompt = ""
+                            isLoading = true
+                            
+                            coroutineScope.launch {
+                                try {
+                                    // Send the system prompt + user history to NVIDIA
+                                    val fullContext = listOf(
+                                        Message(role = "system", content = "You are an expert Android Jetpack Compose developer. Only output valid Kotlin code without markdown wrapping.")
+                                    ) + messages
+                                    
+                                    val request = ChatRequest(messages = fullContext)
+                                    val response = nvidiaApi.generateCode("Bearer $apiKey", request)
+                                    
+                                    if (response.isSuccessful) {
+                                        val aiResponse = response.body()?.choices?.firstOrNull()?.message?.content ?: "Error: No response generated."
+                                        messages = messages + Message(role = "assistant", content = aiResponse)
+                                    } else {
+                                        messages = messages + Message(role = "assistant", content = "Error: ${response.code()} - ${response.message()}")
+                                    }
+                                } catch (e: Exception) {
+                                    messages = messages + Message(role = "assistant", content = "Network Error: ${e.localizedMessage}")
+                                } finally {
+                                    isLoading = false
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.background(
-                        MaterialTheme.colorScheme.primary, 
+                        if (isLoading) Color.Gray else MaterialTheme.colorScheme.primary, 
                         shape = RoundedCornerShape(12.dp)
-                    )
+                    ),
+                    enabled = !isLoading
                 ) {
                     Icon(
                         imageVector = Icons.Default.Send,
@@ -162,8 +235,20 @@ fun VibeWorkspaceScreen(apiKey: String) {
             contentPadding = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(messages) { (text, isUser) ->
-                ChatBubble(text = text, isUser = isUser)
+            items(messages) { message ->
+                ChatBubble(
+                    text = message.content, 
+                    isUser = message.role == "user"
+                )
+            }
+            if (isLoading) {
+                item {
+                    Text(
+                        "Generating code...", 
+                        color = Color.Gray, 
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
             }
         }
     }
@@ -178,13 +263,12 @@ fun ChatBubble(text: String, isUser: Boolean) {
         Surface(
             color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = Modifier.widthIn(max = 320.dp)
         ) {
             Text(
                 text = text,
                 modifier = Modifier.padding(12.dp),
                 color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                // Use monospace font for AI code responses to make it look like an IDE
                 fontFamily = if (isUser) FontFamily.Default else FontFamily.Monospace,
                 style = MaterialTheme.typography.bodyMedium
             )
