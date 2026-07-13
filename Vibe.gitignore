@@ -1,0 +1,20 @@
+# Gradle files
+.gradle/
+build/
+app/build/
+
+# Local configuration file (never commit this as it contains local paths and keys)
+local.properties
+
+# IntelliJ IDEA / Android Studio
+.idea/
+*.iml
+*.iws
+
+# Mac OS X
+.DS_Store
+
+# Misc
+captures/
+.externalNativeBuild/
+.cxx/
