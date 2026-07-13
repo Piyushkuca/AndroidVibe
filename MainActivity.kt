@@ -255,45 +255,63 @@ fun VibeWorkspaceScreen(apiKey: String) {
 }
 
 @Composable
-fun ChatBubble(text: String, isUser: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+
+@Composable
+fun CodeBlockView(code: String, language: String) {
+    val clipboardManager = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
     ) {
-        Surface(
-            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.widthIn(max = 320.dp)
+        // Top bar of the code block
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF2D2D2D), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isUser) {
-                // Simple rendering for user prompts
+            Text(
+                text = language.ifBlank { "code" },
+                color = Color.LightGray,
+                style = MaterialTheme.typography.labelSmall
+            )
+            
+            TextButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(code))
+                    copied = true
+                },
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.height(24.dp)
+            ) {
                 Text(
-                    text = text,
-                    modifier = Modifier.padding(12.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    style = MaterialTheme.typography.bodyMedium
+                    text = if (copied) "Copied!" else "Copy",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall
                 )
-            } else {
-                // Advanced parsing for AI responses
-                Column(modifier = Modifier.padding(12.dp)) {
-                    val segments = parseMessage(text)
-                    segments.forEach { segment ->
-                        when (segment) {
-                            is MessageSegment.Text -> {
-                                Text(
-                                    text = segment.content,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
-                            is MessageSegment.Code -> {
-                                CodeBlockView(code = segment.content, language = segment.language)
-                            }
-                        }
-                    }
-                }
             }
         }
+        
+        // Scrollable code area
+        Text(
+            text = code,
+            color = Color(0xFFD4D4D4), // Classic VSCode light gray
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(12.dp)
+        )
     }
 }
