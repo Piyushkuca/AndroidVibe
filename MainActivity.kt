@@ -127,7 +127,10 @@ fun ApiKeyScreen(onKeySubmitted: (String) -> Unit) {
         }
     }
 }
-
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun VibeWorkspaceScreen(apiKey: String, onClearKey: () -> Unit) { 
+    // ... rest of your variables ...
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VibeWorkspaceScreen(apiKey: String) {
